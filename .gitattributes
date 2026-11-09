@@ -1,0 +1,9 @@
+# 统一换行符，避免不同系统下 diff 噪声
+* text=auto eol=lf
+
+# 二进制 / 图片
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.webp binary

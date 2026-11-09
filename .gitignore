@@ -1,0 +1,19 @@
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 编辑器 / IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---------- 日志与临时文件 ----------
+*.log
+*.tmp
+
+# ---------- 本地个人数据 ----------
+# 学习数据保存在浏览器的 localStorage 中，如需导出备份请勿提交
+backup*.json
+moji-word-backup*.json
