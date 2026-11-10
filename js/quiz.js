@@ -46,6 +46,11 @@
   /* ---------------- 设置面板 ---------------- */
 
   function render() {
+    // 切到别的页面再回来时，不要丢掉正在进行的测验
+    if (run && $("#quiz-run") && !$("#quiz-run").hidden) {
+      renderSetup();
+      return;
+    }
     showSetup();
   }
 
@@ -78,7 +83,7 @@
   function renderSetup() {
     var q = Store.quizStats();
     $("#quiz-acc-pill").textContent = q.acc == null ? "正确率 --" : "正确率 " + q.acc + "%";
-    var m = Store.mistakeCount();
+    var m = Store.mistakeCount((Store.currentBook() || {}).id);
     $("#quiz-mistake-count").textContent = m + " 个";
     $("#btn-quiz-mistakes").hidden = m === 0;
     $("#quiz-mistake-text").textContent = m
