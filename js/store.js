@@ -36,7 +36,10 @@
       videos: [],
       checkins: {},
       checkinsMigrated: true,
-      stats: { answers: 0, correct: 0, startedAt: Date.now() }
+      notes: {},
+      stars: {},
+      mistakes: {},
+      stats: { answers: 0, correct: 0, quizAnswers: 0, quizCorrect: 0, startedAt: Date.now() }
     };
   }
 
@@ -55,6 +58,9 @@
       s.customBooks = s.customBooks || [];
       s.videos = s.videos || [];
       s.checkins = s.checkins || {};
+      s.notes = s.notes || {};
+      s.stars = s.stars || {};
+      s.mistakes = s.mistakes || {};
       if (!s.checkinsMigrated) {
         // 老数据：把以前学过的日子补记为打卡，避免升级后连续天数清零
         for (var dk in s.days) {
@@ -322,13 +328,13 @@
   function streak() {
     var count = 0;
     var d = new Date();
-    if (!state.days[dayKey(d)] || state.days[dayKey(d)].total === 0) {
+    if (wordsOn(dayKey(d)) === 0) {
       d = new Date(Date.now() - DAY);
-      if (!state.days[dayKey(d)] || state.days[dayKey(d)].total === 0) return 0;
+      if (wordsOn(dayKey(d)) === 0) return 0;
     }
     while (true) {
       var rec = state.days[dayKey(d)];
-      if (rec && rec.total > 0) { count++; d = new Date(d.getTime() - DAY); }
+      if (rec && wordsOn(dayKey(d)) > 0) { count++; d = new Date(d.getTime() - DAY); }
       else break;
     }
     return count;
@@ -348,8 +354,10 @@
   }
 
   function accuracy() {
-    if (!state.stats.answers) return null;
-    return Math.round((state.stats.correct / state.stats.answers) * 100);
+    var a = (state.stats.answers || 0) + (state.stats.quizAnswers || 0);
+    var c = (state.stats.correct || 0) + (state.stats.quizCorrect || 0);
+    if (!a) return null;
+    return Math.round((c / a) * 100);
   }
 
   function bookProgress(bookId) {
@@ -374,14 +382,17 @@
     for (var t = start.getTime(); t <= today.getTime(); t += DAY) {
       var k = dayKey(new Date(t));
       var rec = state.days[k];
-      out.push({ key: k, n: rec ? rec.total : 0, today: k === dayKey() });
+      out.push({ key: k, n: rec ? (rec.total || 0) + (rec.quiz || 0) : 0, today: k === dayKey() });
     }
     return out;
   }
 
   function activeDays() {
     var n = 0;
-    for (var k in state.days) if (state.days[k].total > 0) n++;
+    for (var k in state.days) {
+      var rec = state.days[k];
+      if ((rec.total || 0) + (rec.quiz || 0) > 0) n++;
+    }
     return n;
   }
 
@@ -394,12 +405,12 @@
 
   function todayWords() {
     var d = state.days[dayKey()];
-    return d ? (d.total || 0) : 0;
+    return d ? (d.total || 0) + (d.quiz || 0) : 0;
   }
 
   function wordsOn(key) {
     var d = state.days[key];
-    return d ? (d.total || 0) : 0;
+    return d ? (d.total || 0) + (d.quiz || 0) : 0;
   }
 
   function checkIn() {
@@ -664,6 +675,155 @@
     return { added: true, total: book.words.length };
   }
 
+  /* ---------------- 生词本 / 笔记 ---------------- */
+
+  function isStarred(word) { return !!state.stars[cardKey(word)]; }
+
+  function toggleStar(word) {
+    var k = cardKey(word);
+    if (state.stars[k]) delete state.stars[k];
+    else state.stars[k] = Date.now();
+    save();
+    return !!state.stars[k];
+  }
+
+  function starCount(bookId) {
+    if (!bookId) return Object.keys(state.stars).length;
+    var b = getBook(bookId), n = 0;
+    if (!b) return 0;
+    for (var i = 0; i < b.words.length; i++) if (state.stars[cardKey(b.words[i].w)]) n++;
+    return n;
+  }
+
+  function getNote(word) { return state.notes[cardKey(word)] || ""; }
+
+  function setNote(word, text) {
+    var k = cardKey(word);
+    text = String(text || "").trim();
+    if (text) state.notes[k] = text;
+    else delete state.notes[k];
+    save();
+  }
+
+  function noteCount() { return Object.keys(state.notes).length; }
+
+  /* ---------------- 测验 ---------------- */
+
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var r = Math.floor(Math.random() * (i + 1));
+      var t = arr[i]; arr[i] = arr[r]; arr[r] = t;
+    }
+    return arr;
+  }
+
+  function quizPool(bookId, scope, limit) {
+    var b = getBook(bookId);
+    if (!b) return [];
+    var out = [];
+    var i, c;
+    if (scope === "star") {
+      for (i = 0; i < b.words.length; i++) if (state.stars[cardKey(b.words[i].w)]) out.push(b.words[i]);
+    } else if (scope === "mistake") {
+      for (i = 0; i < b.words.length; i++) if (state.mistakes[cardKey(b.words[i].w)]) out.push(b.words[i]);
+    } else if (scope === "all") {
+      out = b.words.slice();
+    } else {
+      for (i = 0; i < b.words.length; i++) {
+        c = state.cards[cardKey(b.words[i].w)];
+        if (c && c.seen) out.push(b.words[i]);
+      }
+    }
+    out = out.filter(function (w) { return w && w.m; });
+    shuffle(out);
+    return limit && out.length > limit ? out.slice(0, limit) : out;
+  }
+
+  function quizAnswer(word, bookId, ok) {
+    var k = cardKey(word);
+    var d = state.days[dayKey()] || (state.days[dayKey()] = { new: 0, review: 0, total: 0, correct: 0, seconds: 0, words: [] });
+    d.quiz = (d.quiz || 0) + 1;
+    if (ok) d.quizCorrect = (d.quizCorrect || 0) + 1;
+
+    state.stats.quizAnswers = (state.stats.quizAnswers || 0) + 1;
+    if (ok) state.stats.quizCorrect = (state.stats.quizCorrect || 0) + 1;
+
+    var c = state.cards[k];
+    if (!ok) {
+      state.mistakes[k] = (state.mistakes[k] || 0) + 1;
+      c = ensureCard(word, bookId);
+      c.seen = Math.max(1, c.seen);
+      c.lapses += 1;
+      c.reps = 0;
+      c.interval = 0;
+      c.state = "learning";
+      c.due = Date.now() + 10 * 60 * 1000;
+      c.last = Date.now();
+    } else if (c) {
+      c.correct += 1;
+    }
+    save();
+  }
+
+  function quizStats() {
+    var a = state.stats.quizAnswers || 0;
+    var c = state.stats.quizCorrect || 0;
+    return { answers: a, correct: c, acc: a ? Math.round(c / a * 100) : null };
+  }
+
+  function mistakeCount(bookId) {
+    if (bookId) {
+      var b = getBook(bookId), n = 0;
+      if (!b) return 0;
+      for (var i = 0; i < b.words.length; i++) if (state.mistakes[cardKey(b.words[i].w)]) n++;
+      return n;
+    }
+    return Object.keys(state.mistakes).length;
+  }
+
+  function clearMistakes() { state.mistakes = {}; save(); }
+
+  /* ---------------- 周报 ---------------- */
+
+  function weekStats() {
+    var out = { days: 0, words: 0, correct: 0, answers: 0, seconds: 0, quiz: 0 };
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (var i = 0; i < 7; i++) {
+      var rec = state.days[dayKey(new Date(today.getTime() - i * DAY))];
+      if (!rec) continue;
+      if ((rec.total || 0) + (rec.quiz || 0) > 0) out.days++;
+      out.words += rec.total || 0;
+      out.correct += (rec.correct || 0) + (rec.quizCorrect || 0);
+      out.answers += (rec.total || 0) + (rec.quiz || 0);
+      out.seconds += rec.seconds || 0;
+      out.quiz += rec.quiz || 0;
+    }
+    return out;
+  }
+
+  /* ---------------- 成就 ---------------- */
+
+  function badges() {
+    var st = checkinStreak(), total = checkinTotal(), learned = totalLearned(), mastered = totalMastered();
+    var q = quizStats();
+    var list = [
+      { id: "start", name: "初次见面", desc: "学完第一个词", icon: "sparkle", got: learned >= 1 },
+      { id: "streak3", name: "小有恒心", desc: "连续打卡 3 天", icon: "flame", got: st >= 3 },
+      { id: "streak7", name: "一周不辍", desc: "连续打卡 7 天", icon: "flame", got: st >= 7 },
+      { id: "streak30", name: "月度坚持", desc: "连续打卡 30 天", icon: "flame", got: st >= 30 },
+      { id: "words100", name: "词汇百斩", desc: "累计学过 100 词", icon: "book", got: learned >= 100 },
+      { id: "words500", name: "词汇五百", desc: "累计学过 500 词", icon: "book", got: learned >= 500 },
+      { id: "words1000", name: "千词计划", desc: "累计学过 1000 词", icon: "book", got: learned >= 1000 },
+      { id: "master50", name: "牢固掌握", desc: "掌握 50 个词", icon: "check", got: mastered >= 50 },
+      { id: "master200", name: "记忆达人", desc: "掌握 200 个词", icon: "check", got: mastered >= 200 },
+      { id: "quiz50", name: "小试牛刀", desc: "测验作答 50 题", icon: "sentence", got: (q.answers || 0) >= 50 },
+      { id: "quiz90", name: "神射手", desc: "测验正确率达到 90%", icon: "sentence", got: (q.answers || 0) >= 20 && q.acc >= 90 },
+      { id: "checkin100", name: "百日之约", desc: "累计打卡 100 天", icon: "sun", got: total >= 100 }
+    ];
+    return list;
+  }
+
   /* ---------------- 备份 ---------------- */
 
   function exportData() {
@@ -687,6 +847,9 @@
     state.customBooks = s.customBooks || [];
     state.videos = s.videos || [];
     state.checkins = s.checkins || {};
+    state.notes = s.notes || {};
+    state.stars = s.stars || {};
+    state.mistakes = s.mistakes || {};
     if (!s.checkinsMigrated && !s.checkins) {
       for (var dk in state.days) {
         var rec = state.days[dk];
@@ -696,7 +859,7 @@
       }
     }
     state.checkinsMigrated = true;
-    state.stats = Object.assign({ answers: 0, correct: 0, startedAt: Date.now() }, s.stats || {});
+    state.stats = Object.assign({ answers: 0, correct: 0, quizAnswers: 0, quizCorrect: 0, startedAt: Date.now() }, s.stats || {});
     refreshBooks();
     saveNow();
   }
@@ -766,6 +929,19 @@
     videoProgress: videoProgress,
     setVideoPos: setVideoPos,
     addWordToVideoBook: addWordToVideoBook,
+    isStarred: isStarred,
+    toggleStar: toggleStar,
+    starCount: starCount,
+    getNote: getNote,
+    setNote: setNote,
+    noteCount: noteCount,
+    quizPool: quizPool,
+    quizAnswer: quizAnswer,
+    quizStats: quizStats,
+    mistakeCount: mistakeCount,
+    clearMistakes: clearMistakes,
+    weekStats: weekStats,
+    badges: badges,
     parseImport: parseImport,
     deleteBook: deleteBook,
     exportData: exportData,

@@ -39,6 +39,9 @@
   <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4 9a5 5 0 0 1 5-5h9M18 4l3 3-3 3M20 15a5 5 0 0 1-5 5H6M6 20l-3-3 3-3"/></symbol>
   <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 10.5a2.5 2.5 0 1 0 0 3M17 10.5a2.5 2.5 0 1 0 0 3"/></symbol>
   <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.5 6 .8-4.4 4.3 1.1 6-5.4-3-5.4 3 1.1-6L3.4 9.9l6-.8z"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14 7l3 3"/></symbol>
 </svg>
 
 <div class="app" id="app">
@@ -143,6 +146,14 @@
 
       <div id="book-list" class="book-list"></div>
 
+      <div class="filter-row word-filters" id="word-filters">
+        <button class="filter is-active" data-filter="all">全部</button>
+        <button class="filter" data-filter="star">生词本</button>
+        <button class="filter" data-filter="learning">学习中</button>
+        <button class="filter" data-filter="mastered">已掌握</button>
+        <button class="filter" data-filter="new">未学</button>
+      </div>
+
       <div class="section-head">
         <h3 id="word-list-title">单词</h3>
         <span class="muted" id="word-list-count"></span>
@@ -182,6 +193,110 @@
       <div id="sentence-list" class="sentence-list"></div>
     </section>
 
+    <!-- ============ 测验 ============ -->
+    <section class="view" id="view-quiz">
+      <div class="view-head">
+        <h2>测验</h2>
+        <span class="pill" id="quiz-acc-pill">正确率 --</span>
+      </div>
+      <p class="view-sub">主动回忆比反复看更有效。选一种题型，把学过的词真正考出来。</p>
+
+      <div id="quiz-setup">
+        <div class="quiz-modes" id="quiz-modes">
+          <button class="quiz-mode is-active" data-mode="en-zh">
+            <span class="quiz-mode-ic brand"><svg class="ic"><use href="#i-book"></use></svg></span>
+            <b>看英选中</b><small>给单词选释义</small>
+          </button>
+          <button class="quiz-mode" data-mode="zh-en">
+            <span class="quiz-mode-ic gold"><svg class="ic"><use href="#i-edit"></use></svg></span>
+            <b>看中选英</b><small>给释义选单词</small>
+          </button>
+          <button class="quiz-mode" data-mode="listen">
+            <span class="quiz-mode-ic brand"><svg class="ic"><use href="#i-volume"></use></svg></span>
+            <b>听音选词</b><small>练听力辨音</small>
+          </button>
+          <button class="quiz-mode" data-mode="spell">
+            <span class="quiz-mode-ic gold"><svg class="ic"><use href="#i-target"></use></svg></span>
+            <b>拼写挑战</b><small>看释义拼单词</small>
+          </button>
+        </div>
+
+        <div class="card quiz-config">
+          <div class="setting">
+            <div class="setting-label"><span>题目数量</span><small>建议每次 10–20 题</small></div>
+            <div class="seg compact" id="quiz-size">
+              <button class="seg-btn is-active" data-size="10">10 题</button>
+              <button class="seg-btn" data-size="20">20 题</button>
+            </div>
+          </div>
+          <div class="setting">
+            <div class="setting-label"><span>出题范围</span><small id="quiz-scope-sub">从学过的单词里出题</small></div>
+            <select id="quiz-scope" class="select">
+              <option value="learned">已学单词</option>
+              <option value="all">整个词库</option>
+              <option value="star">生词本</option>
+              <option value="mistake">错题本</option>
+            </select>
+          </div>
+          <button class="btn-primary" id="btn-quiz-start">开始测验</button>
+        </div>
+
+        <div class="card quiz-note-card" id="quiz-mistake-card">
+          <div class="card-head">
+            <h3>错题本</h3>
+            <span class="muted" id="quiz-mistake-count">0 个</span>
+          </div>
+          <p class="quiz-note-text" id="quiz-mistake-text">测验答错的词会自动收进这里，可以随时专项重练。</p>
+          <button class="btn-ghost" id="btn-quiz-mistakes">重练错题</button>
+        </div>
+      </div>
+
+      <div id="quiz-run" hidden>
+        <div class="quiz-top">
+          <button class="icon-btn" id="quiz-exit" aria-label="退出测验"><svg class="ic"><use href="#i-back"></use></svg></button>
+          <div class="progress"><i id="quiz-bar"></i></div>
+          <span class="study-counter" id="quiz-counter">1 / 10</span>
+        </div>
+
+        <div class="quiz-card card">
+          <p class="quiz-label" id="quiz-label">选出正确的中文释义</p>
+          <div class="quiz-front" id="quiz-front">
+            <p class="quiz-word" id="quiz-word"></p>
+            <p class="quiz-phon" id="quiz-phon"></p>
+            <button class="speak-btn" id="quiz-speak" aria-label="朗读"><svg class="ic"><use href="#i-volume"></use></svg></button>
+          </div>
+          <div class="quiz-options" id="quiz-options"></div>
+          <div class="quiz-input-wrap" id="quiz-input-wrap" hidden>
+            <input id="quiz-input" class="quiz-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入英文单词">
+            <button class="btn-primary" id="quiz-submit">提交答案</button>
+          </div>
+          <div class="quiz-feedback" id="quiz-feedback" hidden></div>
+        </div>
+
+        <div class="quiz-actions">
+          <button class="btn-primary wide" id="quiz-next" hidden>下一题</button>
+          <p class="kbd-hint" id="quiz-kbd-hint">数字键 1–4 作答 · 回车进入下一题</p>
+        </div>
+      </div>
+
+      <div id="quiz-result" hidden>
+        <div class="card quiz-result-card">
+          <div class="quiz-score"><b id="quiz-score">0</b><span>/ <i id="quiz-score-total">10</i> 题</span></div>
+          <p class="quiz-result-sub" id="quiz-result-sub"></p>
+          <div class="done-stats" id="quiz-result-stats"></div>
+          <div class="quiz-wrong" id="quiz-wrong-box">
+            <h4>错题回顾</h4>
+            <div class="quiz-wrong-list" id="quiz-wrong-list"></div>
+          </div>
+          <button class="btn-primary wide" id="quiz-retry-wrong">重练这些错题</button>
+          <div class="row-btns" style="margin-top:10px">
+            <button class="btn-ghost" id="quiz-again">再来一组</button>
+            <button class="btn-ghost" id="quiz-back">返回设置</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 我的 ============ -->
     <section class="view" id="view-me">
       <div class="view-head"><h2>我的</h2></div>
@@ -191,6 +306,17 @@
         <div class="stat"><b id="stat-mastered">0</b><span>已掌握</span></div>
         <div class="stat"><b id="stat-streak">0</b><span>连续打卡</span></div>
         <div class="stat"><b id="stat-acc">--</b><span>平均正确率</span></div>
+      </div>
+
+      <div class="card week-card">
+        <div class="card-head"><h3>本周学习</h3><span class="muted" id="week-range"></span></div>
+        <div class="week-grid" id="week-grid"></div>
+        <div class="week-bars" id="week-bars"></div>
+      </div>
+
+      <div class="card badges-card">
+        <div class="card-head"><h3>成就徽章</h3><span class="muted" id="badge-count"></span></div>
+        <div class="badge-grid" id="badge-grid"></div>
       </div>
 
       <div class="card heat-card">
@@ -263,6 +389,7 @@
   <nav class="tabbar" id="tabbar">
     <button class="tab is-active" data-view="home"><svg class="ic"><use href="#i-home"></use></svg><span>今日</span></button>
     <button class="tab" data-view="books"><svg class="ic"><use href="#i-book"></use></svg><span>词库</span></button>
+    <button class="tab" data-view="quiz"><svg class="ic"><use href="#i-sparkle"></use></svg><span>测验</span></button>
     <button class="tab" data-view="video"><svg class="ic"><use href="#i-video"></use></svg><span>视频</span></button>
     <button class="tab" data-view="sentences"><svg class="ic"><use href="#i-sentence"></use></svg><span>长难句</span></button>
     <button class="tab" data-view="me"><svg class="ic"><use href="#i-user"></use></svg><span>我的</span></button>
@@ -293,6 +420,7 @@
         <p class="meaning" id="card-meaning"></p>
         <div class="example" id="card-example" hidden></div>
         <div class="note" id="card-note" hidden></div>
+        <div class="note mine" id="card-mynote" hidden></div>
       </div>
       <p class="tap-hint" id="tap-hint">轻点卡片查看释义</p>
     </div>
@@ -477,6 +605,7 @@
 <script src="js/words-extra.js"></script>
 <script src="js/data.js"></script>
 <script src="js/store.js"></script>
+<script src="js/quiz.js"></script>
 <script src="js/app.js"></script>
 <script src="js/video.js"></script>
 </body>

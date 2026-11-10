@@ -98,6 +98,7 @@
     if (mainEl) mainEl.scrollTop = 0;
     if (view === "home") renderHome();
     if (view === "books") renderBooks();
+    if (view === "quiz" && window.Quiz) window.Quiz.render();
     if (view === "video" && window.Video) window.Video.render();
     if (view === "sentences") renderSentences();
     if (view === "me") renderMe();
@@ -276,6 +277,7 @@
 
   /* ---------------- 词库 ---------------- */
   var wordLimit = 60;
+  var wordFilter = "all";
   var searchTimer = null;
 
   function renderBooks() {
@@ -302,6 +304,14 @@
     renderWordList();
   }
 
+  function matchesFilter(w) {
+    if (wordFilter === "star") return Store.isStarred(w.w);
+    if (wordFilter === "mastered") return Store.statusOf(w.w) === "mastered";
+    if (wordFilter === "learning") return ["learning", "review"].indexOf(Store.statusOf(w.w)) !== -1;
+    if (wordFilter === "new") return !Store.cardOf(w.w);
+    return true;
+  }
+
   function renderWordList() {
     var book = Store.currentBook();
     if (!book) return;
@@ -312,18 +322,34 @@
         return w.w.toLowerCase().indexOf(q) !== -1 || (w.m && w.m.indexOf(q) !== -1);
       });
       $("#word-list-title").textContent = "搜索结果";
+    } else {
+      words = book.words.slice();
+      $("#word-list-title").textContent = book.name;
+    }
+
+    words = words.filter(matchesFilter);
+
+    var slice;
+    if (q) {
+      slice = words.slice(0, 200);
       $("#word-list-count").textContent = words.length + " 个匹配";
-      var slice = words.slice(0, 200);
       $("#btn-more-words").hidden = words.length <= 200;
     } else {
-      $("#word-list-title").textContent = book.name;
-      $("#word-list-count").textContent = "共 " + book.words.length + " 词";
-      slice = book.words.slice(0, wordLimit);
-      $("#btn-more-words").hidden = book.words.length <= wordLimit;
+      slice = words.slice(0, wordLimit);
+      $("#word-list-count").textContent = wordFilter === "all"
+        ? "共 " + book.words.length + " 词"
+        : "筛选出 " + words.length + " 词";
+      $("#btn-more-words").hidden = words.length <= wordLimit;
     }
 
     if (!slice.length) {
-      $("#word-list").innerHTML = '<div class="word-empty">没有找到匹配的单词</div>';
+      var empty = {
+        star: "生词本还是空的，点开任意单词就能收藏",
+        mastered: "还没有已掌握的单词，继续积累吧",
+        learning: "还没有正在学习的单词",
+        new: "这个词库的单词都已经学过了"
+      }[wordFilter] || "没有找到匹配的单词";
+      $("#word-list").innerHTML = '<div class="word-empty">' + esc(empty) + "</div>";
       return;
     }
 
@@ -331,7 +357,9 @@
       var st = Store.statusOf(w.w);
       return '<div class="word-row" role="button" tabindex="0" data-word="' + esc(w.w) + '" data-book="' + esc(book.id) + '">' +
         '<span class="w-dot ' + st + '"></span>' +
-        '<span class="w-main"><span class="w-word">' + esc(w.w) + "</span>" +
+        '<span class="w-main"><span class="w-word">' + esc(w.w) +
+          (Store.isStarred(w.w) ? '<svg class="ic w-star"><use href="#i-star"></use></svg>' : "") +
+        "</span>" +
         '<span class="w-meaning">' + esc(w.m || "暂无释义") + "</span></span>" +
         '<svg class="ic" style="width:14px;height:14px;color:var(--muted)"><use href="#i-chevron"></use></svg>' +
       "</div>";
@@ -361,7 +389,14 @@
               '<div class="example-zh">' + esc(extra.ez) + "</div></div>" +
               '<div class="note" style="margin-top:12px">' + esc(extra.n) + "</div>";
     }
+    var starred = Store.isStarred(data.w);
+    html += '<label class="note-editor">' +
+        '<span class="note-editor-label"><svg class="ic"><use href="#i-edit"></use></svg>我的笔记</span>' +
+        '<textarea id="sheet-note" rows="2" maxlength="240" placeholder="记一下词根、易混词，或自己造个句子…"></textarea>' +
+      "</label>";
     html += '<div class="sheet-actions">' +
+      '<button class="btn-ghost' + (starred ? " is-starred" : "") + '" data-act="star">' +
+        '<svg class="ic"><use href="#i-star"></use></svg>' + (starred ? "已收藏" : "收藏") + "</button>" +
       '<button class="btn-ghost" data-act="speak">朗读</button>' +
       (opts.videoMode
         ? '<button class="btn-ghost" data-act="add">加入视频生词本</button>'
@@ -374,10 +409,29 @@
     $("#sheet").setAttribute("data-word", data.w);
     $("#sheet").setAttribute("data-book", cardBook || bookId);
 
+    var noteEl = $("#sheet-note");
+    if (noteEl) {
+      noteEl.value = Store.getNote(data.w);
+      var noteTimer = null;
+      noteEl.addEventListener("input", function () {
+        clearTimeout(noteTimer);
+        var v = noteEl.value;
+        noteTimer = setTimeout(function () { Store.setNote(data.w, v); }, 250);
+      });
+      noteEl.addEventListener("blur", function () { Store.setNote(data.w, noteEl.value); });
+    }
+
     $$("#sheet-content [data-act]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var act = btn.getAttribute("data-act");
         if (act === "speak") speak(data.w);
+        if (act === "star") {
+          var on = Store.toggleStar(data.w);
+          btn.classList.toggle("is-starred", on);
+          btn.innerHTML = '<svg class="ic"><use href="#i-star"></use></svg>' + (on ? "已收藏" : "收藏");
+          toast(on ? "已加入生词本" : "已从生词本移除");
+          if (currentView === "books") renderWordList();
+        }
         if (act === "add") {
           var r = Store.addWordToVideoBook(data.w, data.p, data.m);
           toast(r.added ? "已加入视频生词本（共 " + r.total + " 词）" : "这个词已经在生词本里了");
@@ -586,6 +640,13 @@
       note.hidden = true;
     }
 
+    var mine = Store.getNote(w.w);
+    var mynote = $("#card-mynote");
+    if (mynote) {
+      if (mine) { mynote.hidden = false; mynote.textContent = mine; }
+      else mynote.hidden = true;
+    }
+
     $("#study-counter").textContent = session.passed + " / " + session.total;
     $("#study-bar").style.width = (session.passed / session.total * 100) + "%";
 
@@ -670,7 +731,44 @@
     $("#stat-acc").textContent = acc == null ? "--" : acc + "%";
     renderHeatmap($("#me-heatmap"), 140);
     $("#me-heat-total").textContent = "共 " + Store.activeDays() + " 天";
+    renderWeek();
+    renderBadges();
     renderCalendar();
+  }
+
+  function renderWeek() {
+    var w = Store.weekStats();
+    var cw = Store.checkinWeek();
+    $("#week-range").textContent = "近 7 天";
+    $("#week-grid").innerHTML =
+      "<div><b>" + w.days + "</b><span>学习天数</span></div>" +
+      "<div><b>" + w.answers + "</b><span>学习次数</span></div>" +
+      "<div><b>" + (w.answers ? Math.round(w.correct / w.answers * 100) + "%" : "--") + "</b><span>正确率</span></div>" +
+      "<div><b>" + w.quiz + "</b><span>测验题数</span></div>";
+
+    var max = 1;
+    cw.forEach(function (d) { if (d.words > max) max = d.words; });
+    $("#week-bars").innerHTML = cw.map(function (d) {
+      var pct = d.words ? Math.max(10, Math.round(d.words / max * 100)) : 0;
+      return '<div class="week-bar' + (d.today ? " is-today" : "") + (d.words ? " has" : "") + '" title="' + d.key + " · " + d.words + ' 词">' +
+        "<b>" + (d.words || "") + "</b>" +
+        '<div class="week-bar-trail"><i style="height:' + pct + '%"></i></div>' +
+        "<span>" + d.label + "</span>" +
+      "</div>";
+    }).join("");
+  }
+
+  function renderBadges() {
+    var list = Store.badges();
+    var got = list.filter(function (b) { return b.got; }).length;
+    $("#badge-count").textContent = got + " / " + list.length;
+    $("#badge-grid").innerHTML = list.map(function (b) {
+      return '<div class="badge' + (b.got ? " is-got" : "") + '" title="' + esc(b.desc) + '">' +
+        '<span class="badge-ic"><svg class="ic"><use href="#i-' + b.icon + '"></use></svg></span>' +
+        "<b>" + esc(b.name) + "</b>" +
+        "<span>" + esc(b.desc) + "</span>" +
+      "</div>";
+    }).join("");
   }
 
   function syncSettingsUI() {
@@ -760,6 +858,17 @@
     $("#word-list").addEventListener("click", function (e) {
       var row = e.target.closest("[data-word]");
       if (row) openSheet(row.getAttribute("data-word"), row.getAttribute("data-book"));
+    });
+
+    $("#word-filters").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-filter]");
+      if (!b) return;
+      wordFilter = b.getAttribute("data-filter");
+      $$("#word-filters .filter").forEach(function (x) {
+        x.classList.toggle("is-active", x === b);
+      });
+      wordLimit = 60;
+      renderWordList();
     });
 
     $("#btn-more-words").addEventListener("click", function () {
@@ -934,6 +1043,7 @@
     });
 
     // 服务工作者
+    if (window.Quiz) window.Quiz.init();
     if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
       navigator.serviceWorker.register("sw.js").catch(function () {});
     }

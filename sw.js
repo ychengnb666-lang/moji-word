@@ -1,5 +1,5 @@
 /* 墨记单词 · Service Worker */
-const CACHE = "moji-word-v12";
+const CACHE = "moji-word-v14";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const ASSETS = [
   "./js/words-extra.js",
   "./js/data.js",
   "./js/store.js",
+  "./js/quiz.js",
   "./js/app.js",
   "./js/video.js",
   "./manifest.webmanifest",
